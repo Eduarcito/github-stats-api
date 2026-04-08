@@ -72,7 +72,6 @@ app.get("/languages", async (req, res) => {
     let page = 1;
     let repos = [];
 
-    // 🔄 traer TODOS los repos (incluye colaborador)
     while (true) {
       const reposRes = await fetch(
         `https://api.github.com/user/repos?per_page=100&page=${page}`,
@@ -93,7 +92,6 @@ app.get("/languages", async (req, res) => {
 
     const totalLangs = {};
 
-    // 🚀 traer lenguajes de todos los repos
     await Promise.all(
       repos.map(async (repo) => {
         if (!repo.languages_url) return;
@@ -107,31 +105,24 @@ app.get("/languages", async (req, res) => {
 
           const data = await langRes.json();
 
-          // 🔥 evitar errores de API
           if (!data || data.message) return;
-
-          // 🔥 ignorar repos sin lenguajes
           if (!Object.keys(data).length) return;
 
           for (const lang in data) {
             totalLangs[lang] = (totalLangs[lang] || 0) + data[lang];
           }
-
-        } catch (err) {
-          console.log("Error en repo:", repo.name);
-        }
+        } catch {}
       })
     );
 
     const totalBytes = Object.values(totalLangs).reduce((a, b) => a + b, 0);
 
-    // 🔥 si no hay datos
     if (!totalBytes) {
       return res.send(`
-        <svg width="400" height="100" xmlns="http://www.w3.org/2000/svg">
+        <svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
           <rect width="100%" height="100%" fill="#0f172a" rx="12"/>
-          <text x="20" y="55" fill="#e2e8f0" font-size="14">
-            No language data available
+          <text x="50%" y="50%" fill="#e2e8f0" text-anchor="middle">
+            No data
           </text>
         </svg>
       `);
@@ -143,44 +134,80 @@ app.get("/languages", async (req, res) => {
         percent: (value / totalBytes) * 100
       }))
       .sort((a, b) => b.percent - a.percent)
-      .slice(0, 6);
+      .slice(0, 5);
 
-    let bars = "";
-    let y = 60;
+    const colorsList = [
+      "#38bdf8",
+      "#22c55e",
+      "#f59e0b",
+      "#ef4444",
+      "#a78bfa"
+    ];
 
-    sorted.forEach((item) => {
-      const percent = item.percent || 0;
-      const width = percent * 3;
-      const color = colors[item.lang] || colors.default;
+    let radius = 70;
+    let circumference = 2 * Math.PI * radius;
+    let offset = 0;
 
-      bars += `
-        <text x="20" y="${y}" fill="#e2e8f0" font-size="13">
+    let circles = "";
+    let legend = "";
+    let yLegend = 30;
+
+    sorted.forEach((item, index) => {
+      const percent = item.percent;
+      const dash = (percent / 100) * circumference;
+      const color = colorsList[index];
+
+      circles += `
+        <circle
+          cx="100"
+          cy="100"
+          r="${radius}"
+          fill="none"
+          stroke="${color}"
+          stroke-width="14"
+          stroke-dasharray="${dash} ${circumference}"
+          stroke-dashoffset="${-offset}"
+          stroke-linecap="round"
+        >
+          <animate attributeName="stroke-dasharray"
+            from="0 ${circumference}"
+            to="${dash} ${circumference}"
+            dur="1s"
+            fill="freeze"/>
+        </circle>
+      `;
+
+      offset += dash;
+
+      legend += `
+        <text x="200" y="${yLegend}" fill="#e2e8f0" font-size="13">
           ${item.lang} (${percent.toFixed(1)}%)
         </text>
-        <rect x="20" y="${y + 8}" width="${width}" height="12" fill="${color}" rx="6"/>
       `;
-      y += 35;
+
+      yLegend += 25;
     });
 
     const svg = `
-    <svg width="450" height="${y}" xmlns="http://www.w3.org/2000/svg">
-      <style>
-        .title { fill: #38bdf8; font-size: 20px; font-weight: bold; }
-      </style>
-
+    <svg width="400" height="220" xmlns="http://www.w3.org/2000/svg">
       <rect width="100%" height="100%" fill="#0f172a" rx="12"/>
 
-      <text x="20" y="35" class="title">
-        Languages Usage (All Repos)
+      <g transform="rotate(-90 100 100)">
+        ${circles}
+      </g>
+
+      <!-- centro -->
+      <circle cx="100" cy="100" r="45" fill="#0f172a"/>
+      <text x="100" y="105" text-anchor="middle" fill="#38bdf8" font-size="14">
+        LANGS
       </text>
 
-      ${bars}
+      <!-- leyenda -->
+      ${legend}
     </svg>
     `;
 
-    // 🔥 cache (mejora rendimiento en GitHub README)
     res.setHeader("Cache-Control", "s-maxage=3600");
-
     res.setHeader("Content-Type", "image/svg+xml");
     res.send(svg);
 
