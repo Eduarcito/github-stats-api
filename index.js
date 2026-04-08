@@ -72,6 +72,7 @@ app.get("/languages", async (req, res) => {
     let page = 1;
     let repos = [];
 
+    // 🔄 Obtener todos los repos
     while (true) {
       const reposRes = await fetch(
         `https://api.github.com/user/repos?per_page=100&page=${page}`,
@@ -92,6 +93,7 @@ app.get("/languages", async (req, res) => {
 
     const totalLangs = {};
 
+    // 🔥 Obtener lenguajes por repo
     await Promise.all(
       repos.map(async (repo) => {
         if (!repo.languages_url) return;
@@ -117,124 +119,89 @@ app.get("/languages", async (req, res) => {
 
     const totalBytes = Object.values(totalLangs).reduce((a, b) => a + b, 0);
 
+    // 🚨 fallback
     if (!totalBytes) {
       return res.send(`
-        <svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
-          <rect width="100%" height="100%" fill="#0f172a" rx="12"/>
-          <text x="50%" y="50%" fill="#e2e8f0" text-anchor="middle">
-            No data
+        <svg width="500" height="120" xmlns="http://www.w3.org/2000/svg">
+          <rect width="100%" height="100%" fill="#0f172a" rx="10"/>
+          <text x="20" y="70" fill="#e2e8f0">
+            No language data available
           </text>
         </svg>
       `);
     }
 
+    // 🔥 Top lenguajes
     const sorted = Object.entries(totalLangs)
       .map(([lang, value]) => ({
         lang,
         percent: (value / totalBytes) * 100
       }))
       .sort((a, b) => b.percent - a.percent)
-      .slice(0, 5);
+      .slice(0, 6);
 
-    const colorsList = [
-      "#38bdf8",
-      "#22c55e",
-      "#f59e0b",
-      "#ef4444",
-      "#a78bfa"
-    ];
+    // 🎨 Colores tipo GitHub
+    const colors = {
+      JavaScript: "#f1e05a",
+      TypeScript: "#3178c6",
+      Python: "#3572A5",
+      Java: "#b07219",
+      HTML: "#e34c26",
+      CSS: "#563d7c",
+      default: "#38bdf8"
+    };
 
-    let radius = 70;
-    let circumference = 2 * Math.PI * radius;
+    // 🔥 Barra horizontal (tipo GitHub)
     let offset = 0;
+    let segments = "";
 
-    let circles = "";
-    let legend = "";
-    let yLegend = 30;
+    sorted.forEach((item) => {
+      const width = item.percent * 5; // escala
+      const color = colors[item.lang] || colors.default;
 
-    sorted.forEach((item, index) => {
-      const percent = item.percent;
-      const dash = (percent / 100) * circumference;
-      const color = colorsList[index];
-
-      circles += `
-        <circle
-          cx="100"
-          cy="100"
-          r="${radius}"
-          fill="none"
-          stroke="${color}"
-          stroke-width="14"
-          stroke-dasharray="${dash} ${circumference}"
-          stroke-dashoffset="${-offset}"
-          stroke-linecap="round"
-        >
-          <animate attributeName="stroke-dasharray"
-            from="0 ${circumference}"
-            to="${dash} ${circumference}"
-            dur="1s"
-            fill="freeze"/>
-        </circle>
+      segments += `
+        <rect
+          x="${offset}"
+          y="0"
+          width="${width}"
+          height="12"
+          fill="${color}"
+        />
       `;
 
-      offset += dash;
+      offset += width;
+    });
+
+    // 🔥 Leyenda
+    let legend = "";
+    let y = 40;
+
+    sorted.forEach((item) => {
+      const color = colors[item.lang] || colors.default;
 
       legend += `
-        <text x="200" y="${yLegend}" fill="#e2e8f0" font-size="13">
-          ${item.lang} (${percent.toFixed(1)}%)
+        <circle cx="20" cy="${y - 5}" r="5" fill="${color}" />
+        <text x="35" y="${y}" fill="#e2e8f0" font-size="13">
+          ${item.lang} (${item.percent.toFixed(1)}%)
         </text>
       `;
 
-      yLegend += 25;
+      y += 25;
     });
 
- const svg = `
-<svg width="400" height="220" xmlns="http://www.w3.org/2000/svg">
-  <rect width="100%" height="100%" fill="#0f172a" rx="12"/>
+    const svg = `
+    <svg width="500" height="${y}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100%" height="100%" fill="#0f172a" rx="10"/>
 
-  <!-- fondo círculo -->
-  <circle cx="100" cy="100" r="70" fill="none" stroke="#1e293b" stroke-width="14"/>
+      <!-- barra -->
+      <g transform="translate(20,20)">
+        ${segments}
+      </g>
 
-  ${sorted.map((item, index) => {
-    const percent = item.percent || 0;
-    const dash = (percent / 100) * circumference;
-    const color = colorsList[index];
-    
-    const currentOffset = offset;
-    offset += dash;
-
-    return `
-      <circle
-        cx="100"
-        cy="100"
-        r="${radius}"
-        fill="none"
-        stroke="${color}"
-        stroke-width="14"
-        stroke-dasharray="${dash} ${circumference}"
-        stroke-dashoffset="${-currentOffset}"
-        stroke-linecap="round"
-        transform="rotate(-90 100 100)"
-      />
+      <!-- leyenda -->
+      ${legend}
+    </svg>
     `;
-  }).join("")}
-
-  <!-- centro -->
-  <circle cx="100" cy="100" r="45" fill="#0f172a"/>
-
-  <text x="100" y="105" text-anchor="middle" fill="#38bdf8" font-size="14">
-    LANGS
-  </text>
-
-  <!-- leyenda -->
-  ${sorted.map((item, i) => `
-    <text x="200" y="${30 + (i * 25)}" fill="#e2e8f0" font-size="13">
-      ${item.lang} (${item.percent.toFixed(1)}%)
-    </text>
-  `).join("")}
-
-</svg>
-`;
 
     res.setHeader("Cache-Control", "s-maxage=3600");
     res.setHeader("Content-Type", "image/svg+xml");
