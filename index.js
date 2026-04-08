@@ -188,24 +188,53 @@ app.get("/languages", async (req, res) => {
       yLegend += 25;
     });
 
-    const svg = `
-    <svg width="400" height="220" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="#0f172a" rx="12"/>
+ const svg = `
+<svg width="400" height="220" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100%" height="100%" fill="#0f172a" rx="12"/>
 
-      <g transform="rotate(-90 100 100)">
-        ${circles}
-      </g>
+  <!-- fondo círculo -->
+  <circle cx="100" cy="100" r="70" fill="none" stroke="#1e293b" stroke-width="14"/>
 
-      <!-- centro -->
-      <circle cx="100" cy="100" r="45" fill="#0f172a"/>
-      <text x="100" y="105" text-anchor="middle" fill="#38bdf8" font-size="14">
-        LANGS
-      </text>
+  ${sorted.map((item, index) => {
+    const percent = item.percent || 0;
+    const dash = (percent / 100) * circumference;
+    const color = colorsList[index];
+    
+    const currentOffset = offset;
+    offset += dash;
 
-      <!-- leyenda -->
-      ${legend}
-    </svg>
+    return `
+      <circle
+        cx="100"
+        cy="100"
+        r="${radius}"
+        fill="none"
+        stroke="${color}"
+        stroke-width="14"
+        stroke-dasharray="${dash} ${circumference}"
+        stroke-dashoffset="${-currentOffset}"
+        stroke-linecap="round"
+        transform="rotate(-90 100 100)"
+      />
     `;
+  }).join("")}
+
+  <!-- centro -->
+  <circle cx="100" cy="100" r="45" fill="#0f172a"/>
+
+  <text x="100" y="105" text-anchor="middle" fill="#38bdf8" font-size="14">
+    LANGS
+  </text>
+
+  <!-- leyenda -->
+  ${sorted.map((item, i) => `
+    <text x="200" y="${30 + (i * 25)}" fill="#e2e8f0" font-size="13">
+      ${item.lang} (${item.percent.toFixed(1)}%)
+    </text>
+  `).join("")}
+
+</svg>
+`;
 
     res.setHeader("Cache-Control", "s-maxage=3600");
     res.setHeader("Content-Type", "image/svg+xml");
