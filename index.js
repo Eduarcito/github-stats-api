@@ -1,5 +1,4 @@
 import express from "express";
-import fetch from "node-fetch";
 import cors from "cors";
 
 const app = express();
@@ -70,56 +69,85 @@ app.get("/stats", async (req, res) => {
 ========================= */
 app.get("/languages", async (req, res) => {
   try {
-    const reposRes = await fetch(`https://api.github.com/users/${USER}/repos`);
-    const repos = await reposRes.json();
+    let page = 1;
+    let repos = [];
+
+    // 🔄 traer TODOS los repos (incluye colaborador)
+    while (true) {
+      const reposRes = await fetch(
+        `https://api.github.com/user/repos?per_page=100&page=${page}`,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.GITHUB_TOKEN}`
+          }
+        }
+      );
+
+      const data = await reposRes.json();
+
+      if (!data.length) break;
+
+      repos = repos.concat(data);
+      page++;
+    }
 
     const totalLangs = {};
 
-    for (const repo of repos) {
-      const langRes = await fetch(repo.languages_url);
-      const data = await langRes.json();
+    // 🚀 paralelizar requests (más rápido)
+    await Promise.all(
+      repos.map(async (repo) => {
+        if (!repo.languages_url) return;
 
-      for (const lang in data) {
-        totalLangs[lang] = (totalLangs[lang] || 0) + data[lang];
-      }
-    }
+        const langRes = await fetch(repo.languages_url, {
+          headers: {
+            Authorization: `Bearer ${process.env.GITHUB_TOKEN}`
+          }
+        });
+
+        const data = await langRes.json();
+
+        for (const lang in data) {
+          totalLangs[lang] = (totalLangs[lang] || 0) + data[lang];
+        }
+      })
+    );
 
     const totalBytes = Object.values(totalLangs).reduce((a, b) => a + b, 0);
 
     const sorted = Object.entries(totalLangs)
       .map(([lang, value]) => ({
         lang,
-        percent: ((value / totalBytes) * 100)
+        percent: (value / totalBytes) * 100
       }))
       .sort((a, b) => b.percent - a.percent)
       .slice(0, 6);
 
     let bars = "";
-    let y = 50;
+    let y = 60;
 
-    sorted.forEach(item => {
-      const width = item.percent * 2.5;
+    sorted.forEach((item) => {
+      const width = item.percent * 3;
       const color = colors[item.lang] || colors.default;
 
       bars += `
         <text x="20" y="${y}" fill="#e2e8f0" font-size="13">
           ${item.lang} (${item.percent.toFixed(1)}%)
         </text>
-        <rect x="20" y="${y + 5}" width="${width}" height="10" fill="${color}" rx="5"/>
+        <rect x="20" y="${y + 8}" width="${width}" height="12" fill="${color}" rx="6"/>
       `;
       y += 35;
     });
 
     const svg = `
-    <svg width="420" height="${y}" xmlns="http://www.w3.org/2000/svg">
+    <svg width="450" height="${y}" xmlns="http://www.w3.org/2000/svg">
       <style>
-        .title { fill: #38bdf8; font-size: 18px; font-weight: bold; }
+        .title { fill: #38bdf8; font-size: 20px; font-weight: bold; }
       </style>
 
       <rect width="100%" height="100%" fill="#0f172a" rx="12"/>
 
-      <text x="20" y="30" class="title">
-        Top Languages
+      <text x="20" y="35" class="title">
+        Languages Usage (All Repos)
       </text>
 
       ${bars}
@@ -130,6 +158,7 @@ app.get("/languages", async (req, res) => {
     res.send(svg);
 
   } catch (error) {
+    console.error(error);
     res.status(500).send("Error en languages");
   }
 });
